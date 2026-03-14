@@ -1,10 +1,10 @@
+from groq import Groq
 import streamlit as st
 import yfinance as yf
 import requests
 import pandas as pd
 import feedparser
 from datetime import datetime
-from google import genai
 import os
 
 # 1. Configuração da Página
