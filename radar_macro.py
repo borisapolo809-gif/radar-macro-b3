@@ -168,17 +168,16 @@ if st.button("Gerar Plano de Trade"):
             
             # Contexto resumido para o Llama 3
             prompt = f"""
-            Analise como Head Trader:
+            Analise como um Head Trader de Mesa Proprietária:
             VIX: {vix:.2f} | DXY: {dxy:.2f} | ISG: {isg:.2f} | GeoRisk: {tensao}
             Spread Juros EUA: {spread:.4f}
             
             Notícias: {'. '.join(noticias[:5])}
             
-            Forneça:
-            1. VIÉS WIN/WDO
-            2. JUSTIFICATIVA TÉCNICA
-            3. ALVO E STOP ESTIMADO
-            Seja curto, bruto e focado em números.
+            Com base nesses dados e na volatilidade atual:
+            1. Dê o VIÉS para WIN e WDO.
+            2. Forneça ALVOS e STOPS específicos para o contrato atual de WIN e WDO.
+            3. Seja direcional, realista e focado em números técnicos.
             """
 
             with st.spinner("Groq processando..."):
