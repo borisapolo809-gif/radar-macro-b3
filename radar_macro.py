@@ -143,6 +143,24 @@ with col_win:
 
 with col_wdo:
     st.metric("Probabilidade WDO Subir", f"{prob_wdo}%")
+    # ---------------------------------------------------
+# CONFIGURAÇÃO E FUNÇÃO TELEGRAM
+# ---------------------------------------------------
+with st.sidebar:
+    st.divider()
+    st.subheader("📲 Alertas Telegram")
+    tg_token = st.text_input("Bot Token", type="password")
+    tg_id = st.text_input("Seu Chat ID")
+
+def enviar_pro_telegram(texto):
+    if tg_token and tg_id:
+        try:
+            url = f"https://api.telegram.org/bot{tg_token}/sendMessage"
+            payload = {"chat_id": tg_id, "text": f"🛰️ *VEREDITO MACRO*\n\n{texto}", "parse_mode": "Markdown"}
+            requests.post(url, data=payload)
+        except:
+            pass
+# ---------------------------------------------------
 
 # ---------------------------------------------------
 # ANALISTA + TRADER MACRO IA (VIA GROQ) 
@@ -191,6 +209,7 @@ if st.button("Gerar Plano de Trade"):
                 
                 st.info("### 🏁 Plano de Trade Profissional")
                 st.write(chat_completion.choices[0].message.content)
+                enviar_pro_telegram(chat_completion.choices[0].message.content)
                 
         except Exception as e:
             st.error(f"Erro na Groq: {e}")
