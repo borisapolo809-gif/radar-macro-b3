@@ -156,11 +156,15 @@ def enviar_pro_telegram(texto):
     if tg_token and tg_id:
         try:
             url = f"https://api.telegram.org/bot{tg_token}/sendMessage"
-            payload = {"chat_id": tg_id, "text": f"🛰️ *VEREDITO MACRO*\n\n{texto}", "parse_mode": "Markdown"}
+            # Versão simplificada para não dar erro de formatação
+            payload = {
+                "chat_id": tg_id, 
+                "text": f"🛰️ RADAR MACRO\n\n{texto[:3500]}"
+            }
+            # Aqui fazemos o envio
             requests.post(url, data=payload)
-        except:
-            pass
-# ---------------------------------------------------
+        except Exception as e:
+            st.error(f"Erro ao enviar para Telegram: {e}")
 
 # ---------------------------------------------------
 # ANALISTA + TRADER MACRO IA (VIA GROQ) 
@@ -185,17 +189,24 @@ if st.button("Gerar Plano de Trade"):
             client = Groq(api_key=groq_key)
             
             # Contexto resumido para o Llama 3
+          # Contexto turbinado para não errar preços
             prompt = f"""
             Analise como um Head Trader de Mesa Proprietária:
-            VIX: {vix:.2f} | DXY: {dxy:.2f} | ISG: {isg:.2f} | GeoRisk: {tensao}
-            Spread Juros EUA: {spread:.4f}
             
-            Notícias: {'. '.join(noticias[:5])}
+            PREÇOS ATUAIS B3:
+            - WIN (Ibovespa): {ibov:,.2f} pontos
+            - WDO (Dólar/BRL): {dolar:,.2f}
             
-            Com base nesses dados e na volatilidade atual:
-            1. Dê o VIÉS para WIN e WDO.
-            2. Forneça ALVOS e STOPS específicos para o contrato atual de WIN e WDO.
-            3. Seja direcional, realista e focado em números técnicos.
+            INDICADORES GLOBAIS:
+            - VIX: {vix:.2f} | DXY: {dxy:.2f} | ISG: {isg:.2f} | GeoRisk: {tensao}
+            - Spread Juros EUA: {spread:.4f}
+            
+            NOTÍCIAS: {'. '.join(noticias[:5])}
+            
+            COM BASE NESSES DADOS:
+            1. Dê o VIÉS para WIN e WDO (Alta/Baixa/Neutro).
+            2. Forneça ALVOS e STOPS técnicos baseados nos PREÇOS REAIS citados acima.
+            3. Seja direto, sem avisos genéricos, focado em níveis de preço para o pregão.
             """
 
             with st.spinner("Groq processando..."):
