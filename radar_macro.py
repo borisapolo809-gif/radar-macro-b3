@@ -1,4 +1,3 @@
-from groq import Groq
 import streamlit as st
 import yfinance as yf
 import requests
@@ -6,25 +5,45 @@ import pandas as pd
 import feedparser
 from datetime import datetime
 import os
+from groq import Groq
 
-# 1. Configuração da Página
+# 1. CONFIGURAÇÃO DA PÁGINA (Sempre o primeiro comando)
 st.set_page_config(page_title="Radar Macro B3 v2.0", layout="wide", page_icon="🛰️")
+
+# 2. ESTILO VISUAL "ULTRON AI" (DARK NEON)
+st.markdown("""
+    <style>
+    .main { background-color: #0e1117; }
+    div[data-testid="stMetricValue"] { color: #00ffcc !important; font-size: 30px !important; font-weight: bold; }
+    div[data-testid="stMetricDelta"] { color: #ff4b4b !important; }
+    .stMarkdown h1, h2, h3 { color: #ffffff; text-shadow: 0px 0px 8px #00ffcc66; }
+    div.stButton > button:first-child {
+        background-color: #00ffcc; color: black; border-radius: 8px;
+        font-weight: bold; width: 100%; border: none; height: 3em; transition: 0.3s;
+    }
+    div.stButton > button:hover { background-color: #00cca3; color: white; }
+    .stInfo { background-color: #161b22; border: 1px solid #00ffcc; color: white; border-radius: 10px; }
+    </style>
+    """, unsafe_allow_html=True)
 
 # ---------------------------------------------------
 # SIDEBAR - CONFIGURAÇÕES
 # ---------------------------------------------------
 with st.sidebar:
     st.title("⚙️ Configurações")
-    # Tenta pegar a chave do ambiente ou do campo de texto
-    api_key = st.text_input("Gemini API Key", type="password", value=os.getenv("GOOGLE_API_KEY") or "")
-    st.info("O 'Veredito IA' utiliza o modelo gemini-2.0-flash.")
+    groq_key = st.text_input("Groq API Key", type="password", value=os.getenv("GROQ_API_KEY") or "")
+    st.info("Pegue sua chave grátis em: console.groq.com")
+    
+    st.divider()
+    st.subheader("📲 Alertas Telegram")
+    tg_token = st.text_input("Bot Token", type="password")
+    tg_id = st.text_input("Seu Chat ID")
 
 # ---------------------------------------------------
-# FUNÇÃO DE DADOS (YFINANCE)
+# FUNÇÕES DE DADOS
 # ---------------------------------------------------
 def pegar_preco(ticker):
     try:
-        # Busca 2 dias para garantir dados em janelas de fechamento
         df = yf.download(ticker, period="2d", interval="1m", progress=False)
         if not df.empty:
             return float(df["Close"].iloc[-1])
@@ -32,13 +51,22 @@ def pegar_preco(ticker):
     except:
         return None
 
+def enviar_pro_telegram(texto):
+    if tg_token and tg_id:
+        try:
+            url = f"https://api.telegram.org/bot{tg_token}/sendMessage"
+            payload = {"chat_id": tg_id, "text": f"🛰️ RADAR MACRO\n\n{texto[:3500]}"}
+            requests.post(url, data=payload)
+        except:
+            pass
+
 # ---------------------------------------------------
 # INTERFACE PRINCIPAL
 # ---------------------------------------------------
 st.title("🛰️ Radar Macro Global → B3")
-st.write(f"Monitoramento em tempo real • {datetime.now().strftime('%H:%M:%S')}")
+st.write(f"📊 Monitoramento em Tempo Real • {datetime.now().strftime('%H:%M:%S')}")
 
-# RADAR GLOBAL
+# SEÇÃO 1: SENSORES GLOBAIS
 st.subheader("🌍 Sensores Globais")
 ativos = {
     "S&P500": "^GSPC", "NASDAQ": "^IXIC", "VIX": "^VIX",
@@ -58,7 +86,7 @@ for i, (nome, ticker) in enumerate(ativos.items()):
         else:
             st.metric(nome, "erro")
 
-# RADAR BRASIL
+# SEÇÃO 2: RADAR BRASIL
 st.subheader("🇧🇷 Radar Brasil")
 col1, col2, col3 = st.columns(3)
 
@@ -73,31 +101,21 @@ with col3:
     try:
         url = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados/ultimos/1?formato=json"
         ipca = requests.get(url).json()[0]["valor"]
-        st.metric("Focus IPCA", ipca)
+        st.metric("Focus IPCA", f"{ipca}%")
     except:
         st.metric("Focus IPCA", "erro")
 
 # ---------------------------------------------------
-# CÁLCULOS DE STRESS E SCORE
+# CÁLCULOS DE STRESS E NOTÍCIAS
 # ---------------------------------------------------
-t10 = dados_mercado.get("T10Y")
-t2 = dados_mercado.get("T2Y")
-spread = (t10 - t2) if (t10 and t2) else 0
-
 vix = dados_mercado.get("VIX", 0) or 0
 dxy = dados_mercado.get("DXY", 0) or 0
 petroleo = dados_mercado.get("Petróleo", 0) or 0
+t10 = dados_mercado.get("T10Y", 0) or 0
+t2 = dados_mercado.get("T2Y", 0) or 0
+spread = (t10 - t2)
 
-# Score Macro (0 a 10)
-score = 0
-if vix > 20: score += 2
-if vix > 25: score += 2
-if dxy > 104: score += 1
-if spread < 0: score += 2
-if petroleo > 90: score += 1
-
-# GeoRisk (Notícias)
-st.subheader("🌐 Radar Geopolítico")
+# Radar Geopolítico
 feeds = ["https://feeds.bbci.co.uk/news/world/rss.xml", "https://www.cnbc.com/id/100003114/device/rss/rss.html"]
 keywords = ["war", "conflict", "inflation", "crisis", "recession", "fed", "rates", "china"]
 tensao = 0
@@ -111,116 +129,69 @@ for url in feeds:
             noticias.append(titulo)
             if any(k in titulo.lower() for k in keywords):
                 tensao += 1
-    except:
-        pass
-
-col_risk, col_news = st.columns([1, 3])
-with col_risk:
-    st.metric("GeoRisk Score", tensao)
-with col_news:
-    with st.expander("Ver manchetes recentes"):
-        for n in noticias[:15]:
-            st.write(f"• {n}")
+    except: pass
 
 # ISG - Índice de Stress Global
-st.subheader("🌡️ Índice de Stress Global")
-isg = (score * 10) + (tensao * 3) + (vix if vix else 0)
-st.metric("ISG", round(isg, 2))
-st.progress(min(isg/150, 1.0))
+st.divider()
+col_isg, col_prob = st.columns([1, 2])
 
-# -# ---------------------------------------------------
-# PROBABILIDADES WIN / WDO (O QUE TINHA ANTES)
+with col_isg:
+    st.subheader("🌡️ Stress Global (ISG)")
+    # Cálculo Score Macro
+    score = 0
+    if vix > 20: score += 2
+    if dxy > 104: score += 2
+    if spread < 0: score += 2
+    
+    isg = (score * 10) + (tensao * 3) + (vix if vix else 0)
+    st.metric("ISG Index", round(isg, 2), delta="RISCO ALTO" if isg > 50 else "NORMAL")
+    st.progress(min(isg/150, 1.0))
+
+with col_prob:
+    st.subheader("🎯 Probabilidades Operacionais")
+    p_win = max(0, 70 - (score * 10) - tensao)
+    p_wdo = min(100, 30 + (score * 10) + tensao)
+    c1, c2 = st.columns(2)
+    c1.metric("WIN Subir", f"{p_win}%")
+    c2.metric("WDO Subir", f"{p_wdo}%")
+
+# ---------------------------------------------------
+# BOTÃO DE ANÁLISE IA
 # ---------------------------------------------------
 st.divider()
-col_win, col_wdo = st.columns(2)
+st.subheader("🧠 Veredito IA - Head Trader")
 
-# Cálculo baseado no seu Score e Tensão Geopolítica
-prob_win = max(0, 70 - (score * 10) - tensao)
-prob_wdo = min(100, 30 + (score * 10) + tensao)
-
-with col_win:
-    st.metric("Probabilidade WIN Subir", f"{prob_win}%")
-
-with col_wdo:
-    st.metric("Probabilidade WDO Subir", f"{prob_wdo}%")
-    # ---------------------------------------------------
-# CONFIGURAÇÃO E FUNÇÃO TELEGRAM
-# ---------------------------------------------------
-with st.sidebar:
-    st.divider()
-    st.subheader("📲 Alertas Telegram")
-    tg_token = st.text_input("Bot Token", type="password")
-    tg_id = st.text_input("Seu Chat ID")
-
-def enviar_pro_telegram(texto):
-    if tg_token and tg_id:
-        try:
-            url = f"https://api.telegram.org/bot{tg_token}/sendMessage"
-            # Versão simplificada para não dar erro de formatação
-            payload = {
-                "chat_id": tg_id, 
-                "text": f"🛰️ RADAR MACRO\n\n{texto[:3500]}"
-            }
-            # Aqui fazemos o envio
-            requests.post(url, data=payload)
-        except Exception as e:
-            st.error(f"Erro ao enviar para Telegram: {e}")
-
-# ---------------------------------------------------
-# ANALISTA + TRADER MACRO IA (VIA GROQ) 
-# -----------------------------------------------------------------------------------------------------
-# ---------------------------------------------------
-# ANALISTA + TRADER MACRO IA (VIA GROQ)
-# ---------------------------------------------------
-from groq import Groq
-
-st.subheader("🧠 Veredito IA (Alta Velocidade Groq)")
-
-with st.sidebar:
-    st.divider()
-    groq_key = st.text_input("Groq API Key", type="password")
-    st.info("Pegue sua chave grátis em: console.groq.com")
-
-if st.button("Gerar Plano de Trade"):
+if st.button("🚀 GERAR PLANO DE TRADE"):
     if not groq_key:
         st.error("Insira a Groq API Key na barra lateral!")
     else:
         try:
             client = Groq(api_key=groq_key)
-            
-            # Contexto resumido para o Llama 3
-          # Contexto turbinado para não errar preços
             prompt = f"""
-            Analise como um Head Trader de Mesa Proprietária:
+            Analise como um Head Trader:
+            PREÇOS B3: WIN {ibov:,.2f} | WDO {dolar:,.2f}
+            MACRO: VIX {vix:.2f}, DXY {dxy:.2f}, ISG {isg:.2f}, GeoRisk {tensao}
+            NOTÍCIAS: {'. '.join(noticias[:3])}
             
-            PREÇOS ATUAIS B3:
-            - WIN (Ibovespa): {ibov:,.2f} pontos
-            - WDO (Dólar/BRL): {dolar:,.2f}
-            
-            INDICADORES GLOBAIS:
-            - VIX: {vix:.2f} | DXY: {dxy:.2f} | ISG: {isg:.2f} | GeoRisk: {tensao}
-            - Spread Juros EUA: {spread:.4f}
-            
-            NOTÍCIAS: {'. '.join(noticias[:5])}
-            
-            COM BASE NESSES DADOS:
-            1. Dê o VIÉS para WIN e WDO (Alta/Baixa/Neutro).
-            2. Forneça ALVOS e STOPS técnicos baseados nos PREÇOS REAIS citados acima.
-            3. Seja direto, sem avisos genéricos, focado em níveis de preço para o pregão.
+            RETORNE:
+            1. VIÉS (WIN e WDO).
+            2. ALVO e STOP baseados nos preços reais acima.
+            3. RESUMO do risco do dia.
             """
 
-            with st.spinner("Groq processando..."):
+            with st.spinner("Analisando mercado mundial..."):
                 chat_completion = client.chat.completions.create(
-                    messages=[
-                        {"role": "system", "content": "Você é um analista macro de mesa de operações."},
-                        {"role": "user", "content": prompt}
-                    ],
+                    messages=[{"role": "system", "content": "Analista macro profissional."},
+                              {"role": "user", "content": prompt}],
                     model="llama-3.3-70b-versatile",
                 )
                 
-                st.info("### 🏁 Plano de Trade Profissional")
-                st.write(chat_completion.choices[0].message.content)
-                enviar_pro_telegram(chat_completion.choices[0].message.content)
-                
+                resposta = chat_completion.choices[0].message.content
+                st.info(resposta)
+                enviar_pro_telegram(resposta)
+                st.success("✅ Plano enviado para o Telegram!")
         except Exception as e:
-            st.error(f"Erro na Groq: {e}")
+            st.error(f"Erro: {e}")
+
+st.markdown("---")
+st.caption("Radar Macro Pro v2.0 | Dados: Yahoo Finance & BCB | Inteligência: Llama-3 via Groq")
